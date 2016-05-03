@@ -10,8 +10,10 @@ char PC_init[34]={}, PC_now[34]={};
 int PC_initptr=0, PC_nowptr=0;
 
 int OP, RS, RT, RD, FUNCT, SHAMT, C, signedC;
+int ID_index=0, EX_index=0, DM_index=0, WB_index=0;
 
 int cycle=0, halt=0;
+int stall=0, forward=0;
 int write$0_error=0, number_overflow=0, memory_overflow=0, misaligned=0;
 
 FILE *snap, *error;
@@ -42,11 +44,20 @@ void initial_SNAP(){
     fprintf(snap,"PC: 0x");
     //convert PC from binary to hexadecimal
     for(j=7; j>=0; j--)
-        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_init,4,(j+1)*4-1) );
+        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_now,4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
 
+    fprintf(snap,"\nIF: 0x");
+    for(j=0; j<8; j++)
+        fprintf(snap,"%c",PC_hex[j]);
+    fprintf(snap,"\nID: NOP\n");
+    fprintf(snap,"EX: NOP\n");
+    fprintf(snap,"DM: NOP\n");
+    fprintf(snap,"WB: NOP\n");
+
     fprintf(snap,"\n\n\n");
+    cycle++;
 }
 void PC_adder(){
     int carry=0, bitsum, j=29;
@@ -82,7 +93,7 @@ void PC_adder(){
     //}
 }
 void append_SNAP(){
-    cycle++;
+
     snap=fopen("snapshot.rpt","a");
 
     int i, j;
@@ -108,7 +119,125 @@ void append_SNAP(){
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
 
+    fprintf(snap,"IF: 0x");
+    fprintf(snap,"ID: "); display_instruction(ID_index);
+    fprintf(snap,"EX: "); display_instruction(EX_index);
+    fprintf(snap,"DM: "); display_instruction(DM_index);
+    fprintf(snap,"WB: "); display_instruction(WB_index);
+
     fprintf(snap,"\n\n\n");
+    cycle++;
+}
+
+void display_instruction(int index){
+    if(index==0){
+        printf("NOP");
+    }
+    /**R-type instructions**/
+    else if(index==1){
+        printf("ADD");
+    }
+    else if(index==2){
+        printf("ADDU");
+    }
+    else if(index==3){
+        printf("SUB");
+    }
+    else if(index==4){
+        printf("AND");
+    }
+    else if(index==5){
+        printf("OR");
+    }
+    else if(index==6){
+        printf("XOR");
+    }
+    else if(index==7){
+        printf("NOR");
+    }
+    else if(index==8){
+        printf("NAND");
+    }
+    else if(index==9){
+        printf("SLT);
+    }
+    else if(index==10){
+        printf("SLL");
+    }
+    else if(index==11){
+        printf("SRL");
+    }
+    else if(index=12){
+        printf("SRA");
+    }
+    /**J-type instructions**/
+    else if(index==13){
+        printf("JR");
+    }
+    else if(index==14){
+        printf("J");
+    }
+    else if(index==15){
+        printf("JAL");
+    }
+    /**I-type instructions**/
+    else if(index==16){
+        printf("ADDI");
+    }
+    else if(index==17){
+        printf("ADDIU");
+    }
+    else if(index==18){
+        printf("LW");
+    }
+    else if(index==19){
+        printf("LH");
+    }
+    else if(index==20){
+        printf("LHU");
+    }
+    else if(index==21){
+        printf("LB");
+    }
+    else if(index==22){
+        printf("LBU");
+    }
+    else if(index==23){
+        printf("SW");
+    }
+    else if(index==24){
+        printf("SH");
+    }
+    else if(index==25){
+        printf("SB");
+    }
+    else if(index==26){
+        printf("LUI");
+    }
+    else if(index==27){
+        printf("ANDI");
+    }
+    else if(index==28){
+        printf("OR");
+    }
+    else if(index==29){
+        printf("NOR");
+    }
+    else if(index==30){
+        printf("SLTI");
+    }
+    else if(index==31){
+        printf("BEQ");
+    }
+    else if(index==32){
+        printf("BNE");
+    }
+    else if(index==33){
+        printf("BGTZ");
+    }
+    else{
+        if(test==1) printf("this is error instruction\n");
+    }
 }
 
 void store_imemory(char ch){
@@ -230,7 +359,8 @@ void initialize(){
 
 }
 
-void instruction_fetch(int nop){
+void instruction_fetch(){
+
     if(test==1) printf("enter IF with PC_nowptr=%d\n",PC_nowptr);
     PC_adder(); //PC_now+4
     if(test==1) printf("enter IF after PC_adder() PC_nowptr=%d\n",PC_nowptr);
@@ -241,10 +371,10 @@ void instruction_fetch(int nop){
     RT = char_BINtoDEC(imemory[PC_nowptr/4-1],5,15);
 
 }
-void instruction_decode(int nop){
+void instruction_decode(){
+
     /**decode each instruction**/
     int i, j, INSTR_index;
-    if(test==1) printf("enter ID with PC_nowptr=%d\n",PC_nowptr);
 
         /**analyze INSTR to OPcode, RS, RT, RD, etc.**/
         //OP = char_BINtoDEC(imemory[PC_nowptr/4-1],6,5);
@@ -317,6 +447,7 @@ void instruction_decode(int nop){
             }
             else if(FUNCT==8){
                 INSTR_index=13;
+                stall=1;
                 //jr(RS);
                 if(test==1) printf("this is R-type jr(%d)\n",RS);
             }
@@ -428,16 +559,19 @@ void instruction_decode(int nop){
             }
             else if(OP==4){
                 INSTR_index=31;
+                stall=1;
                 //beq(RS,RT,signedC);
                 if(test==1) printf("this I-type beq(%d,%d,%d)\n",RS,RT,signedC);
             }
             else if(OP==5){
                 INSTR_index=32;
+                stall=1;
                 //bne(RS,RT,signedC);
                 if(test==1) printf("this I-type bne(%d,%d,%d)\n",RS,RT,signedC);
             }
             else if(OP==7){
                 INSTR_index=33;
+                stall=1;
                 //bgtz(RS,signedC);
                 if(test==1) printf("this I-type bgtz(%d,%d)\n",RS,signedC);
             }
@@ -445,14 +579,14 @@ void instruction_decode(int nop){
                 if(test==1) printf("this is I-error instruction\n");
             }
         }
-        execution(INSTR_index);
-
-        if(PC_nowptr>PC_initptr+INSTR_num) break;
+        ID_index=INSTR_index;
+        //execution(INSTR_index);
+        //if(PC_nowptr>PC_initptr+INSTR_num) break;
 }
 
 void execution(int index){
-    if(index==0){
-        //NOP
+    if(index==0){ //NOP
+        return;
     }
     /**R-type instructions**/
     else if(index==1){
@@ -748,6 +882,9 @@ void slt(int rs, int rt, int rd){
     }
 }
 void sll(int rt, int rd, int shamt){
+    if(rd==0 && rt==0 && shamt==0){ //NOP
+        return;
+    }
     if(rd==0){
         write$0_error=1;
         return;
@@ -1246,6 +1383,14 @@ void bgtz(int rs, int c){
 }
 
 
+void memory(int index){
+    if(index==0) return;
+}
+
+void write_back(int index){
+    if(index==0) return;
+}
+
 /////////////////////////////////////////////
 
 int main(){
@@ -1253,19 +1398,28 @@ int main(){
     initialize();
     snap=fopen("snapshot.rpt","w");
     error=fopen("error_dump.rpt","a");
+
+    //cycle0
+    instruction_fetch();
     initial_SNAP();
 
     //cycle1
+    instruction_decode();
     instruction_fetch();
     append_SNAP();
 
     //cycle2
+    execution(EX_index);
+
+
     while(1){
-        write_back();
-        memory();
-        execution();
+        write_back(WB_index);
+        memory(DM_index);
+        execution(EX_index);
         instruction_decode();
         instruction_fetch();
+
+        append_SNAP();
 
         /**do error detection**/
         if(write$0_error){
@@ -1284,8 +1438,18 @@ int main(){
             fprintf(error, "In cycle %d: Misalignment Error\n", cycle);
             break;
         }
-    }
 
+        if(stall){
+            WB_index=DM_index;
+            DM_index=EX_index;
+            EX_index=0;
+            stall=0;
+        } else{
+            WB_index=DM_index;
+            DM_index=EX_index;
+            EX_index=ID_index;
+        }
+    }
 
     fclose(snap);
     fclose(error);

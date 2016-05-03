@@ -11,9 +11,9 @@ void append_SNAP();
 
 void instruction_fetch();
 void instruction_decode();
-void execution();
-void memory();
-void write_back();
+void execution(int index);
+void memory(int index);
+void write_back(int index);
 
 
 /**R-type instructions**/

@@ -8,9 +8,11 @@ void store_imemory(char ch);
 void initial_SNAP();
 void PC_adder();
 void append_SNAP();
+void append_ERROR();
+void display_instruction(int index);
 
 void instruction_fetch();
-void instruction_decode();
+void instruction_decode(int index);
 void execution(int index);
 void memory(int index);
 void write_back(int index);

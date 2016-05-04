@@ -6,7 +6,7 @@ char im_input[1026][10]={}, dm_input[1026][10]={};
 char REG[32][34]={}, REG_tmp[32][34]; //denote the value of register
 char imemory[256][34]={}, dmemory[256][34]={};
 int INSTR_num=0, MEM_num=0;
-char PC_init[34]={}, PC_now[34]={};
+char PC_init[34]={}, PC_now[34]={}, PC_prev[34]={};
 int PC_initptr=0, PC_nowptr=0, PC_prevptr=0;
 
 int OP, RS, RT, RD, FUNCT, SHAMT, C, signedC;
@@ -14,7 +14,8 @@ int ID_index=0, EX_index=0, DM_index=0, WB_index=0;
 int REG_write=0, MEM_write=0, MEM_read=0, dest_reg=0, dest_mem=0;
 
 int cycle=0, halt=0;
-int stall=0, forward=0;
+int stall=0, flush=0, forward_rs=0, forward_rt=0;
+int DM_dest_reg=0;
 int write$0_error=0, number_overflow=0, memory_overflow=0, misaligned=0;
 
 FILE *snap, *error;
@@ -45,7 +46,7 @@ void initial_SNAP(){
     fprintf(snap,"PC: 0x");
     //convert PC from binary to hexadecimal
     for(j=7; j>=0; j--)
-        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_now,4,(j+1)*4-1) );
+        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_init,4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
 
@@ -91,6 +92,7 @@ void PC_adder(){
             }
         }
         PC_nowptr=char_BINtoDEC(PC_now,32,31);
+
 }
 void append_SNAP(){
 
@@ -115,129 +117,135 @@ void append_SNAP(){
     fprintf(snap,"PC: 0x");
     //convert PC from binary to hexadecimal
     for(j=7; j>=0; j--)
-        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_now,4,(j+1)*4-1) );
+        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(PC_prev,4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
 
-    fprintf(snap,"IF: 0x");
+    fprintf(snap,"\nIF: 0x");
     //convert IF from binary to hexadecimal
     for(j=7; j>=0; j--)
         PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr],4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
+    //if(stall) fprintf(snap," to_be_stalled");
+    if(flush) fprintf(snap," to_be_flushed");
+    fprintf(snap,"\nID: ");
+    display_instruction(ID_index);
     if(stall) fprintf(snap," to_be_stalled");
-    fprintf(snap,"\nID: "); display_instruction(ID_index);
-    if(stall) fprintf(snap," to_be_stalled");
-    fprintf(snap,"\nEX: "); display_instruction(EX_index);
-    fprintf(snap,"\nDM: "); display_instruction(DM_index);
-    fprintf(snap,"\nWB: "); display_instruction(WB_index);
+    fprintf(snap,"\nEX: ");
+    display_instruction(EX_index);
+    fprintf(snap,"\nDM: ");
+    display_instruction(DM_index);
+    fprintf(snap,"\nWB: ");
+    display_instruction(WB_index);
 
     fprintf(snap,"\n\n\n");
     cycle++;
 }
 
 void display_instruction(int index){
+    //snap=fopen("snapshot.rpt","a");
     if(index==0){
-        printf("NOP");
+        fprintf(snap,"NOP");
     }
     /**R-type instructions**/
     else if(index==1){
-        printf("ADD");
+        fprintf(snap,"ADD");
     }
     else if(index==2){
-        printf("ADDU");
+        fprintf(snap,"ADDU");
     }
     else if(index==3){
-        printf("SUB");
+        fprintf(snap,"SUB");
     }
     else if(index==4){
-        printf("AND");
+        fprintf(snap,"AND");
     }
     else if(index==5){
-        printf("OR");
+        fprintf(snap,"OR");
     }
     else if(index==6){
-        printf("XOR");
+        fprintf(snap,"XOR");
     }
     else if(index==7){
-        printf("NOR");
+        fprintf(snap,"NOR");
     }
     else if(index==8){
-        printf("NAND");
+        fprintf(snap,"NAND");
     }
     else if(index==9){
-        printf("SLT);
+        fprintf(snap,"SLT");
     }
     else if(index==10){
-        printf("SLL");
+        fprintf(snap,"SLL");
     }
     else if(index==11){
-        printf("SRL");
+        fprintf(snap,"SRL");
     }
     else if(index=12){
-        printf("SRA");
+        fprintf(snap,"SRA");
     }
     /**J-type instructions**/
     else if(index==13){
-        printf("JR");
+        fprintf(snap,"JR");
     }
     else if(index==14){
-        printf("J");
+        fprintf(snap,"J");
     }
     else if(index==15){
-        printf("JAL");
+        fprintf(snap,"JAL");
     }
     /**I-type instructions**/
     else if(index==16){
-        printf("ADDI");
+        fprintf(snap,"ADDI");
     }
     else if(index==17){
-        printf("ADDIU");
+        fprintf(snap,"ADDIU");
     }
     else if(index==18){
-        printf("LW");
+        fprintf(snap,"LW");
     }
     else if(index==19){
-        printf("LH");
+        fprintf(snap,"LH");
     }
     else if(index==20){
-        printf("LHU");
+        fprintf(snap,"LHU");
     }
     else if(index==21){
-        printf("LB");
+        fprintf(snap,"LB");
     }
     else if(index==22){
-        printf("LBU");
+        fprintf(snap,"LBU");
     }
     else if(index==23){
-        printf("SW");
+        fprintf(snap,"SW");
     }
     else if(index==24){
-        printf("SH");
+        fprintf(snap,"SH");
     }
     else if(index==25){
-        printf("SB");
+        fprintf(snap,"SB");
     }
     else if(index==26){
-        printf("LUI");
+        fprintf(snap,"LUI");
     }
     else if(index==27){
-        printf("ANDI");
+        fprintf(snap,"ANDI");
     }
     else if(index==28){
-        printf("OR");
+        fprintf(snap,"OR");
     }
     else if(index==29){
-        printf("NOR");
+        fprintf(snap,"NOR");
     }
     else if(index==30){
-        printf("SLTI");
+        fprintf(snap,"SLTI");
     }
     else if(index==31){
-        printf("BEQ");
+        fprintf(snap,"BEQ");
     }
     else if(index==32){
-        printf("BNE");
+        fprintf(snap,"BNE");
     }
     else if(index==33){
         printf("BGTZ");
@@ -309,6 +317,11 @@ void initialize(){
         PC_init[i+16]=im_input[2][i];
         PC_init[i+24]=im_input[3][i];
 
+        PC_prev[i]=im_input[0][i];
+        PC_prev[i+8]=im_input[1][i];
+        PC_prev[i+16]=im_input[2][i];
+        PC_prev[i+24]=im_input[3][i];
+
         PC_now[i]=im_input[0][i];
         PC_now[i+8]=im_input[1][i];
         PC_now[i+16]=im_input[2][i];
@@ -370,27 +383,24 @@ void initialize(){
 
 void instruction_fetch(){
 
-    if(test==1) printf("enter IF with PC_nowptr=%d\n",PC_nowptr);
+    int i, j, INSTR_index;
+    for(i=0; i<32; i++){
+        PC_prev[i]=PC_now[i];
+    }
     PC_prevptr=PC_nowptr;
     PC_adder(); //PC_now+4
-    if(test==1) printf("enter IF after PC_adder() PC_nowptr=%d\n",PC_nowptr);
+    if(test==1) printf("enter IF, after PC_adder() PC_prev=%d and PC_now=%d\n",PC_prevptr,PC_nowptr);
     //fetch the instruction of imemory[PC_nowptr/4-1]
 
-    OP = char_BINtoDEC(imemory[PC_prevptr],6,5);
-    RS = char_BINtoDEC(imemory[PC_prevptr],5,10);
-    RT = char_BINtoDEC(imemory[PC_prevptr],5,15);
+    OP = char_BINtoDEC(imemory[PC_prevptr/4],6,5);
+    RS = char_BINtoDEC(imemory[PC_prevptr/4],5,10);
+    RT = char_BINtoDEC(imemory[PC_prevptr/4],5,15);
 
-}
-void instruction_decode(){
-
-    /**decode each instruction**/
-    int i, j, INSTR_index;
-
-        /**analyze INSTR to OPcode, RS, RT, RD, etc.**/
+    /**decode each instruction to OPcode, RS, RT, RD, etc.**/
         if(OP==0){
-            FUNCT = char_BINtoDEC(imemory[PC_prevptr],6,31);
-            RD = char_BINtoDEC(imemory[PC_prevptr],5,20);
-            SHAMT = char_BINtoDEC(imemory[PC_prevptr],5,25);
+            FUNCT = char_BINtoDEC(imemory[PC_prevptr/4],6,31);
+            RD = char_BINtoDEC(imemory[PC_prevptr/4],5,20);
+            SHAMT = char_BINtoDEC(imemory[PC_prevptr/4],5,25);
 
             if(FUNCT==32){
                 INSTR_index=1;
@@ -454,7 +464,6 @@ void instruction_decode(){
             }
             else if(FUNCT==8){
                 INSTR_index=13;
-                stall=1;
                 //jr(RS);
                 if(test==1) printf("this is R-type jr(%d)\n",RS);
             }
@@ -463,7 +472,7 @@ void instruction_decode(){
             }
         }
         else if(OP==2||OP==3||OP==63){
-            C = char_BINtoDEC(imemory[PC_prevptr],26,31);
+            C = char_BINtoDEC(imemory[PC_prevptr/4],26,31);
 
             if(OP==2){
                 INSTR_index=14;
@@ -484,8 +493,8 @@ void instruction_decode(){
             }
         }
         else{
-            C = char_BINtoDEC(imemory[PC_prevptr],16,31);
-            signedC = signed_char_BINtoDEC(imemory[PC_prevptr],16,31);
+            C = char_BINtoDEC(imemory[PC_prevptr/4],16,31);
+            signedC = signed_char_BINtoDEC(imemory[PC_prevptr/4],16,31);
 
             if(OP==8){
                 INSTR_index=16;
@@ -564,19 +573,16 @@ void instruction_decode(){
             }
             else if(OP==4){
                 INSTR_index=31;
-                stall=1;
                 //beq(RS,RT,signedC);
                 if(test==1) printf("this I-type beq(%d,%d,%d)\n",RS,RT,signedC);
             }
             else if(OP==5){
                 INSTR_index=32;
-                stall=1;
                 //bne(RS,RT,signedC);
                 if(test==1) printf("this I-type bne(%d,%d,%d)\n",RS,RT,signedC);
             }
             else if(OP==7){
                 INSTR_index=33;
-                stall=1;
                 //bgtz(RS,signedC);
                 if(test==1) printf("this I-type bgtz(%d,%d)\n",RS,signedC);
             }
@@ -585,11 +591,87 @@ void instruction_decode(){
             }
         }
         ID_index=INSTR_index;
-        //execution(INSTR_index);
-        //if(PC_nowptr>PC_initptr+INSTR_num) break;
+
+}
+void instruction_decode(int index){
+    if(test==1) printf("enter ID, with index=%d\n",index);
+
+    /**stall detect**/
+    if(index>=1&&index<=9){
+        if(DM_dest_reg==RS || DM_dest_reg==RT){
+            if(dest_reg!=RS && dest_reg!=RT){
+                stall=1;
+            }
+        }
+    }
+    else if(index>=10&&index<=12){
+        if(DM_dest_reg==RT){
+            if(dest_reg!=RT){
+                stall=1;
+            }
+        }
+    }
+    else if(index==13){
+        if(dest_reg==RS){
+            stall=1;
+        }
+    }
+    else if(index>=16&&index<=22 || index>=27&&index<=30){
+        if(DM_dest_reg==RS){
+            if(dest_reg!=RS){
+                stall=1;
+            }
+        }
+    }
+    else if(index>=23&&index<=25){
+        if(DM_dest_reg==RS || DM_dest_reg==RT){
+            if(dest_reg!=RS && dest_reg!=RT){
+                stall=1;
+            }
+        }
+    }
+    else if(index>=31&&index<=33){
+        if(dest_reg==RS || dest_reg==RT){
+            stall=1;
+        }
+        if(DM_dest_reg==RS || DM_dest_reg==RT){
+            if(EX_index>=18&&EX_index<=22){
+                stall=1;
+            }
+        }
+    }
+
+    /**jump**/
+    if(index==13){
+        jr(RS);
+        flush=1;
+    }
+    else if(index==14){
+        jj(C);
+        flush=1;
+    }
+    else if(index==15){
+        jal(C);
+        flush=1;
+    }
+    else if(index==31){
+        beq(RS,RT,signedC);
+        flush=1;
+    }
+    else if(index==32){
+        bne(RS,RT,signedC);
+        flush=1;
+    }
+    else if(index==33){
+        bgtz(RS,signedC);
+        flush=1;
+    }
+
 }
 
 void execution(int index){
+    if(test==1) printf("enter EX, with index=%d\n",index);
+
     if(index==0){ //NOP
         return;
     }
@@ -631,7 +713,7 @@ void execution(int index){
         sra(RT,RD,SHAMT);
     }
     /**J-type instructions**/
-    else if(index==13){
+    /*else if(index==13){
         jr(RS);
     }
     else if(index==14){
@@ -639,7 +721,7 @@ void execution(int index){
     }
     else if(index==15){
         jal(C);
-    }
+    }*/
     /**I-type instructions**/
     else if(index==16){
         addi(RS,RT,C);
@@ -686,7 +768,7 @@ void execution(int index){
     else if(index==30){
         slti(RS,RT,C);
     }
-    else if(index==31){
+    /*else if(index==31){
         beq(RS,RT,signedC);
     }
     else if(index==32){
@@ -694,9 +776,9 @@ void execution(int index){
     }
     else if(index==33){
         bgtz(RS,signedC);
-    }
+    }*/
     else{
-        if(test==1) printf("this is error instruction\n");
+        if(test==1) printf("this is error instruction or is done in ID\n");
     }
 }
 
@@ -1032,7 +1114,7 @@ void lw(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
         number_overflow=1;
-    if(result>255 || result<0)
+    if(result>255 || result<0 ||result+1>255 || result+2>255 || result+3>255)
         memory_overflow=1;
 
     int check = (REG[rs][31]-'0')+(REG[rs][30]-'0')*2+c;
@@ -1054,7 +1136,7 @@ void lh(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
         number_overflow=1;
-    if(result>255 || result<0)
+    if(result>255 || result<0 ||result+1>255)
         memory_overflow=1;
 
     int check = (REG[rs][31]-'0')+c;
@@ -1076,7 +1158,7 @@ void lhu(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
         number_overflow=1;
-    if(result>255 || result<0)
+    if(result>255 || result<0 ||result+1>255)
         memory_overflow=1;
 
     int check = (REG[rs][31]-'0')+c;
@@ -1384,77 +1466,83 @@ void bgtz(int rs, int c){
 
 
 void memory(int index){
+    if(test==1) printf("enter DM, with index=%d\n",index);
+
     if(index==0 || (MEM_read==0&&MEM_write==0) ){
         return;
     }
 
     if(MEM_read==1 || MEM_write==1){
         int i;
+        if(MEM_read==1) DM_dest_reg=dest_reg;
         if(index==18){
             for(i=0; i<32; i++){
-                REG[dest_reg][i]=dmemory[dest_mem][i];
+                REG_tmp[dest_reg][i]=dmemory[dest_mem][i];
             } MEM_read=0;
         }
         else if(index==19){
             for(i=0; i<16; i++){
-                REG[dest_reg][i+16]=dmemory[dest_mem][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
             }
 
             if(dmemory[dest_mem][0]=='0'){
-                for(i=0; i<16; i++) REG[dest_reg][i]='0';
+                for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
-                for(i=0; i<16; i++) REG[dest_reg][i]='1';
+                for(i=0; i<16; i++) REG_tmp[dest_reg][i]='1';
             }
             MEM_read=0;
         }
         else if(index==20){
             for(i=0; i<16; i++){
-                REG[dest_reg][i+16]=dmemory[dest_mem][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
             }
 
-            for(i=0; i<16; i++) REG[dest_reg][i]='0';
+            for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
             MEM_read=0;
         }
         else if(index==21){
             for(i=0; i<8; i++){
-                REG[dest_reg][i+24]=dmemory[dest_mem][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
             }
 
             if(dmemory[dest_mem][0]=='0'){
-                for(i=0; i<24; i++) REG[dest_reg][i]='0';
+                for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
-                for(i=0; i<24; i++) REG[dest_reg][i]='1';
+                for(i=0; i<24; i++) REG_tmp[dest_reg][i]='1';
             }
             MEM_read=0;
         }
         else if(index==22){
             for(i=0; i<8; i++){
-                REG[dest_reg][i+24]=dmemory[dest_mem][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
             }
 
-            for(i=0; i<24; i++) REG[dest_reg][i]='0';
+            for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
             MEM_read=0;
         }
         else if(index==23){
             for(i=0; i<32; i++){
-                dmemory[dest_mem][i]=REG[dest_reg][i];
+                dmemory[dest_mem][i]=REG_tmp[dest_reg][i];
             } MEM_write=0;
         }
         else if(index==24){
             for(i=0; i<16; i++){
-                dmemory[dest_mem][i+16]=REG[dest_reg][i+16];
+                dmemory[dest_mem][i+16]=REG_tmp[dest_reg][i+16];
             } MEM_write=0;
         }
         else if(index==25){
             for(i=0; i<8; i++){
-                dmemory[dest_mem][i+24]=REG[dest_reg][i+24];
+                dmemory[dest_mem][i+24]=REG_tmp[dest_reg][i+24];
             } MEM_write=0;
         }
+    }
 }
 
 void write_back(int index){
+    if(test==1) printf("enter WB, with index=%d\n",index);
+
     if(index==0 || REG_write==0){ //NOP
         return;
     }
@@ -1480,28 +1568,68 @@ void write_back(int index){
     }
 }
 
+void append_ERROR(){
+    error=fopen("error_dump.rpt","a");
+    /**do error detection**/
+        if(write$0_error){
+            fprintf(error, "In cycle %d: Write $0 Error\n", cycle);
+            write$0_error=0;
+        }
+        if(memory_overflow){
+            fprintf(error, "In cycle %d: Address Overflow\n", cycle);
+            //break;
+        }
+        if(misaligned){
+            fprintf(error, "In cycle %d: Misalignment Error\n", cycle);
+            //break;
+        }
+        if(number_overflow){
+            fprintf(error, "In cycle %d: Number Overflow\n", cycle);
+            number_overflow=0;
+        }
+}
+
 /////////////////////////////////////////////
 
 int main(){
     int i=0;
     initialize();
     snap=fopen("snapshot.rpt","w");
-    error=fopen("error_dump.rpt","a");
+    error=fopen("error_dump.rpt","w");
 
     //cycle0
     instruction_fetch();
     initial_SNAP();
 
     //cycle1
-    instruction_decode();
+    instruction_decode(ID_index);
     instruction_fetch();
     append_SNAP();
+    EX_index=ID_index;
+    printf("In cycle1, EX=%d and ID=%d\n",EX_index,ID_index);
 
     //cycle2
     execution(EX_index);
+    instruction_decode(ID_index);
+    instruction_fetch();
+    append_ERROR();
+    if(halt){
+        //exit(0);
+        fclose(snap);
+        fclose(error);
+        return 0;
+    }
+    append_SNAP();
+    if(stall){
+        DM_index=EX_index;
+        EX_index=0;
+        stall=0;
+    } else{
+        DM_index=EX_index;
+        EX_index=ID_index;
+    }
 
-
-    while(1){
+    /*while(1){
         write_back(WB_index);
         memory(DM_index);
         execution(EX_index);
@@ -1509,25 +1637,11 @@ int main(){
         instruction_fetch();
 
         append_SNAP();
+        append_ERROR();
 
-        /**do error detection**/
-        if(write$0_error){
-            fprintf(error, "In cycle %d: Write $0 Error\n", cycle);
-            write$0_error=0;
-        }
-        if(number_overflow){
-            fprintf(error, "In cycle %d: Number Overflow\n", cycle);
-            number_overflow=0;
-        }
-        if(memory_overflow){
-            fprintf(error, "In cycle %d: Address Overflow\n", cycle);
+        if(halt){
             break;
         }
-        if(misaligned){
-            fprintf(error, "In cycle %d: Misalignment Error\n", cycle);
-            break;
-        }
-
         if(stall){
             WB_index=DM_index;
             DM_index=EX_index;
@@ -1538,7 +1652,7 @@ int main(){
             DM_index=EX_index;
             EX_index=ID_index;
         }
-    }
+    }*/
 
     fclose(snap);
     fclose(error);

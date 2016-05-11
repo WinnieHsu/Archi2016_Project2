@@ -11,7 +11,7 @@ void append_SNAP();
 void append_ERROR();
 void display_instruction(int index);
 
-void instruction_fetch();
+void instruction_fetch(int);
 void instruction_decode(int index);
 void execution(int index);
 void memory(int index);

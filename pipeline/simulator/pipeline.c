@@ -10,19 +10,22 @@ char PC_init[34]={}, PC_now[34]={}, PC_prev[34]={};
 int PC_initptr=0, PC_nowptr=0, PC_prevptr=0;
 
 int OP=0, RS=0, RT=0, RD=0, FUNCT=0, SHAMT=0, C=0, signedC=0;
-int ID_index=0, EX_index=0, DM_index=0, WB_index=0;
+int IF_on=1, ID_index=0, EX_index=0, DM_index=0, WB_index=0;
 int ID_prev=0, EX_prev=0, DM_prev=0, WB_prev=0;
 int REG_write=0, MEM_write=0, MEM_read=0, dest_reg=0, dest_mem=0, DM_dest_reg=0;;
 
-int cycle=0, halt=0, stall=0, flush=0, forward=0;
-int halt_count=0, forward_rs=0, forward_rt=0;
+int cycle=0, halt=0, halt_count=0, stall=0, flush=0;
+int forward=0, forward_rs=0, forward_rt=0;
 int error_write$0=0, error_numberOverflow=0, error_memoryOverflow=0, error_misaligned=0;
 
 FILE *snap, *error;
 
-int test=1; //whether to print test results
+int test=0; //whether to print test results
 
 void initial_SNAP(){
+
+    snap=fopen("snapshot.rpt","w");
+
     int i, j;
     char SP_hex[10]={}, PC_hex[10]={};
     fprintf(snap,"cycle 0\n");
@@ -60,7 +63,9 @@ void initial_SNAP(){
     fprintf(snap,"\nWB: NOP");
 
     fprintf(snap,"\n\n\n");
+    fclose(snap);
     cycle++;
+
 }
 void PC_adder(){
     int carry=0, bitsum, j=29;
@@ -125,7 +130,7 @@ void append_SNAP(){
         PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr/4],4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
-    //if(stall) fprintf(snap," to_be_stalled");
+    if(stall) fprintf(snap," to_be_stalled");
     if(flush) fprintf(snap," to_be_flushed");
     fprintf(snap,"\nID: ");
     display_instruction(ID_prev);
@@ -138,6 +143,7 @@ void append_SNAP(){
     display_instruction(WB_prev);
 
     fprintf(snap,"\n\n\n");
+    fclose(snap);
     cycle++;
 }
 
@@ -384,7 +390,11 @@ void initialize(){
 
 }
 
-void instruction_fetch(){
+void instruction_fetch(int on){
+
+    if(on==0){
+        return;
+    }
 
     int i, j, INSTR_index;
     for(i=0; i<32; i++){
@@ -1048,9 +1058,12 @@ void jal(int c){
         j--;
     }
 
-    for(j=0; j<32;j++) REG[31][j]=PC_now[j];
+    for(j=0; j<32;j++) REG_tmp[31][j]=PC_now[j];
     for(j=4; j<32; j++) PC_now[j]=abin[j]+'0';
     PC_nowptr = char_BINtoDEC(PC_now, 32, 31);
+
+    REG_write=1;
+    dest_reg=31;
 }
 
 /**I-type instructions**/
@@ -1584,8 +1597,14 @@ void write_back(int index){
     WB_prev=index;
 }
 
+int j=0;
 void append_ERROR(){
-    error=fopen("error_dump.rpt","a");
+    if(j==0){
+        error=fopen("error_dump.rpt","w");
+        j++;
+    }
+    else error=fopen("error_dump.rpt","a");
+
     /**do error detection**/
         if(error_write$0){
             fprintf(error, "In cycle %d: Write $0 Error\n", cycle);
@@ -1603,7 +1622,9 @@ void append_ERROR(){
             fprintf(error, "In cycle %d: Number Overflow\n", cycle);
             error_numberOverflow=0;
         }
+    fclose(error);
 }
+
 
 
 /////////////////////////////////////////////
@@ -1611,49 +1632,76 @@ void append_ERROR(){
 int main(){
     int i=0;
     initialize();
-    snap=fopen("snapshot.rpt","w");
-    error=fopen("error_dump.rpt","w");
 
     //cycle0
-    if(test==1) printf(">>cycle %d<<\n",cycle);
-    instruction_fetch();
+    if(test==1) printf(">>cycle %d\n",cycle);
+    instruction_fetch(1);
     initial_SNAP();
 
     //cycle1
-    if(test==1) printf(">>cycle %d<<\n",cycle);
+    if(test==1) printf(">>cycle %d\n",cycle);
     instruction_decode(ID_index);
-    instruction_fetch();
+    instruction_fetch(1);
     append_SNAP();
 
     //cycle2
-    if(test==1) printf(">>cycle %d<<\n",cycle);
+    if(test==1) printf(">>cycle %d\n",cycle);
     execution(EX_index);
     instruction_decode(ID_index);
-    instruction_fetch();
+    instruction_fetch(1);
     append_ERROR();
     if(halt==1 || halt_count==5){
-        fclose(snap);
-        fclose(error);
         return 0;
     }
     append_SNAP();
     if(stall){
-        DM_index=EX_index;
-        EX_index=0;
+        memory(DM_index);
+        execution(0);
+        instruction_decode(0);
+        //instruction_fetch(0);
+        append_ERROR();
+        if(halt==1 || halt_count==5) return 0;
         stall=0;
-    } else{
-        DM_index=EX_index;
-        EX_index=ID_index;
+        append_SNAP();
+    }
+    if(flush){
+        flush=0;
     }
 
-    while(i<10){
+    //cycle3
+    if(test==1) printf(">>cycle %d\n",cycle);
+    memory(DM_index);
+    execution(EX_index);
+    instruction_decode(ID_index);
+    instruction_fetch(1);
+    append_ERROR();
+    if(halt==1 || halt_count==5){
+        return 0;
+    }
+    append_SNAP();
+    if(stall){
+        write_back(WB_index);
+        memory(DM_index);
+        execution(0);
+        instruction_decode(0);
+        //instruction_fetch(0);
+        append_ERROR();
+        if(halt==1 || halt_count==5) return 0;
+        stall=0;
+        append_SNAP();
+    }
+    if(flush){
+        flush=0;
+    }
+
+    while(i<50){
         i++;
-        if(test==1) printf(">>cycle %d<<\n",cycle);
+        if(test==1) printf(">>cycle %d\n",cycle);
         write_back(WB_index);
         memory(DM_index);
         execution(EX_index);
         instruction_decode(ID_index);
-        instruction_fetch();
+        instruction_fetch(1);
 
         append_ERROR();
         if(halt==1 || halt_count==5){
@@ -1661,19 +1709,22 @@ int main(){
         }
         append_SNAP();
         if(stall){
-            WB_index=DM_index;
-            DM_index=EX_index;
-            EX_index=0;
+            write_back(WB_index);
+            memory(DM_index);
+            execution(0);
+            instruction_decode(0);
+            //instruction_fetch(0);
+            append_ERROR();
+            if(halt==1 || halt_count==5) return 0;
             stall=0;
-        } else{
-            WB_index=DM_index;
-            DM_index=EX_index;
-            EX_index=ID_index;
+            append_SNAP();
         }
+        if(flush){
+            flush=0;
+        }
+
     }
 
-    fclose(snap);
-    fclose(error);
     return 0;
 }
 

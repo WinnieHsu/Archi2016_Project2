@@ -9,18 +9,17 @@ int INSTR_num=0, MEM_num=0;
 char PC_init[34]={}, PC_now[34]={}, PC_prev[34]={};
 int PC_initptr=0, PC_nowptr=0, PC_prevptr=0;
 
-int OP, RS, RT, RD, FUNCT, SHAMT, C, signedC;
+int OP=0, RS=0, RT=0, RD=0, FUNCT=0, SHAMT=0, C=0, signedC=0;
 int ID_index=0, EX_index=0, DM_index=0, WB_index=0;
-int REG_write=0, MEM_write=0, MEM_read=0, dest_reg=0, dest_mem=0;
+int REG_write=0, MEM_write=0, MEM_read=0, dest_reg=0, dest_mem=0, DM_dest_reg=0;;
 
-int cycle=0, halt=0;
-int stall=0, flush=0, forward_rs=0, forward_rt=0;
-int DM_dest_reg=0;
-int write$0_error=0, number_overflow=0, memory_overflow=0, misaligned=0;
+int cycle=0, halt=0, stall=0, flush=0, forward=0;
+int halt_count=0, forward_rs=0, forward_rt=0;
+int error_write$0=0, error_numberOverflow=0, error_memoryOverflow=0, error_misaligned=0;
 
 FILE *snap, *error;
 
-int test=1; //whether to printf
+int test=1; //whether to print test results
 
 void initial_SNAP(){
     int i, j;
@@ -32,12 +31,10 @@ void initial_SNAP(){
 
         if(i==29){
             //convert SP from binary to hexadecimal
-            for(j=7; j>=0; j--){
+            for(j=7; j>=0; j--)
                 SP_hex[j] = DECtoHEX_bit( char_BINtoDEC(REG[29],4,(j+1)*4-1) );
-            }
-            for(j=0; j<8; j++){
+            for(j=0; j<8; j++)
                 fprintf(snap,"%c",SP_hex[j]);
-            }
         }
         else fprintf(snap,"00000000");
         fprintf(snap,"\n");
@@ -53,7 +50,7 @@ void initial_SNAP(){
     fprintf(snap,"\nIF: 0x");
     //convert IF from binary to hexadecimal
     for(j=7; j>=0; j--)
-        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr],4,(j+1)*4-1) );
+        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr/4],4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
     fprintf(snap,"\nID: NOP");
@@ -124,7 +121,7 @@ void append_SNAP(){
     fprintf(snap,"\nIF: 0x");
     //convert IF from binary to hexadecimal
     for(j=7; j>=0; j--)
-        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr],4,(j+1)*4-1) );
+        PC_hex[j] = DECtoHEX_bit( char_BINtoDEC(imemory[PC_prevptr/4],4,(j+1)*4-1) );
     for(j=0; j<8; j++)
         fprintf(snap,"%c",PC_hex[j]);
     //if(stall) fprintf(snap," to_be_stalled");
@@ -248,7 +245,7 @@ void display_instruction(int index){
         fprintf(snap,"BNE");
     }
     else if(index==33){
-        printf("BGTZ");
+        fprintf(snap,"BGTZ");
     }
     else{
         if(test==1) printf("this is error instruction\n");
@@ -337,6 +334,11 @@ void initialize(){
         REG[29][i+8]=dm_input[1][i];
         REG[29][i+16]=dm_input[2][i];
         REG[29][i+24]=dm_input[3][i];
+
+        REG_tmp[29][i]=dm_input[0][i];
+        REG_tmp[29][i+8]=dm_input[1][i];
+        REG_tmp[29][i+16]=dm_input[2][i];
+        REG_tmp[29][i+24]=dm_input[3][i];
     }
 
     //store the number of MEM, INSTR
@@ -486,7 +488,7 @@ void instruction_fetch(){
             }
             else if(OP==63){
                 INSTR_index=0;
-                halt=1;
+                halt_count++;
             }
             else{
                 if(test==1) printf("this is error J-instruction\n");
@@ -641,7 +643,7 @@ void instruction_decode(int index){
         }
     }
 
-    /**jump**/
+    /**flush detect**/
     if(index==13){
         jr(RS);
         flush=1;
@@ -666,6 +668,7 @@ void instruction_decode(int index){
         bgtz(RS,signedC);
         flush=1;
     }
+    EX_index=index;
 
 }
 
@@ -780,12 +783,13 @@ void execution(int index){
     else{
         if(test==1) printf("this is error instruction or is done in ID\n");
     }
+    DM_index=EX_index;
 }
 
 /**R-type instructions**/
 void add(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -807,14 +811,14 @@ void add(int rs, int rt, int rd){
     }
     if(same){
         if(REG_tmp[rd][0]!=same_bit){
-            number_overflow=1;
+            error_numberOverflow=1;
             return;
         }
     }
 }
 void addu(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
     int j, carry=0, bitsum;
@@ -833,7 +837,7 @@ void addu(int rs, int rt, int rd){
 }
 void sub(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
     int j, carry=1, bitsum;
@@ -868,7 +872,7 @@ void sub(int rs, int rt, int rd){
     }
     if(same){
         if(REG_tmp[rd][0]!=same_bit){
-            number_overflow=1;
+            error_numberOverflow=1;
             //PC_adder();
             return;
         }
@@ -876,7 +880,7 @@ void sub(int rs, int rt, int rd){
 }
 void and(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -892,7 +896,7 @@ void and(int rs, int rt, int rd){
 }
 void or(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -904,7 +908,7 @@ void or(int rs, int rt, int rd){
 }
 void xor(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
     int j, bitsum;
@@ -915,7 +919,7 @@ void xor(int rs, int rt, int rd){
 }
 void nor(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
     int j, bitsum;
@@ -926,7 +930,7 @@ void nor(int rs, int rt, int rd){
 }
 void nand(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
     int j, bitsum;
@@ -937,7 +941,7 @@ void nand(int rs, int rt, int rd){
 }
 void slt(int rs, int rt, int rd){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -973,7 +977,7 @@ void sll(int rt, int rd, int shamt){
         return;
     }
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -986,7 +990,7 @@ void sll(int rt, int rd, int shamt){
 }
 void srl(int rt, int rd, int shamt){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -999,7 +1003,7 @@ void srl(int rt, int rd, int shamt){
 }
 void sra(int rt, int rd, int shamt){
     if(rd==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1046,7 +1050,7 @@ void jal(int c){
 /**I-type instructions**/
 void addi(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1075,7 +1079,7 @@ void addi(int rs, int rt, int c){
     }
     if(same){
         if(REG_tmp[rt][0]!=same_bit){
-            number_overflow=1;
+            error_numberOverflow=1;
             //PC_adder();
             return;
         }
@@ -1083,7 +1087,7 @@ void addi(int rs, int rt, int c){
 }
 void addiu(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1109,20 +1113,20 @@ void addiu(int rs, int rt, int c){
     }
 }
 void lw(int rs, int rt, int c){
-    if(rt==0) write$0_error=1;
+    if(rt==0) error_write$0=1;
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0 ||result+1>255 || result+2>255 || result+3>255)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+(REG[rs][30]-'0')*2+c;
     if(check%4!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(write$0_error==1 || memory_overflow==1 || misaligned==1){
-        if( memory_overflow==1 || misaligned==1) halt=1;
+    if(error_write$0==1 || error_memoryOverflow==1 || error_misaligned==1){
+        if( error_memoryOverflow==1 || error_misaligned==1) halt=1;
         return;
     }
     MEM_read=1;
@@ -1131,20 +1135,20 @@ void lw(int rs, int rt, int c){
 
 }
 void lh(int rs, int rt, int c){
-    if(rt==0) write$0_error=1;
+    if(rt==0) error_write$0=1;
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0 ||result+1>255)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+c;
     if(check%2!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(write$0_error==1 || memory_overflow==1 || misaligned==1){
-        if( memory_overflow==1 || misaligned==1) halt=1;
+    if(error_write$0==1 || error_memoryOverflow==1 || error_misaligned==1){
+        if( error_memoryOverflow==1 || error_misaligned==1) halt=1;
         return;
     }
     MEM_read=1;
@@ -1153,20 +1157,20 @@ void lh(int rs, int rt, int c){
 
 }
 void lhu(int rs, int rt, int c){
-    if(rt==0) write$0_error=1;
+    if(rt==0) error_write$0=1;
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0 ||result+1>255)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+c;
     if(check%2!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(write$0_error==1 || memory_overflow==1 || misaligned==1){
-        if( memory_overflow==1 || misaligned==1) halt=1;
+    if(error_write$0==1 || error_memoryOverflow==1 || error_misaligned==1){
+        if( error_memoryOverflow==1 || error_misaligned==1) halt=1;
         return;
     }
     MEM_read=1;
@@ -1175,20 +1179,20 @@ void lhu(int rs, int rt, int c){
 
 }
 void lb(int rs, int rt, int c){
-    if(rt==0) write$0_error=1;
+    if(rt==0) error_write$0=1;
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+c;
     if(check%2!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(write$0_error==1 || memory_overflow==1 || misaligned==1){
-        if( memory_overflow==1 || misaligned==1) halt=1;
+    if(error_write$0==1 || error_memoryOverflow==1 || error_misaligned==1){
+        if( error_memoryOverflow==1 || error_misaligned==1) halt=1;
         return;
     }
     MEM_read=1;
@@ -1197,20 +1201,20 @@ void lb(int rs, int rt, int c){
 
 }
 void lbu(int rs, int rt, int c){
-    if(rt==0) write$0_error=1;
+    if(rt==0) error_write$0=1;
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+c;
     if(check%2!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(write$0_error==1 || memory_overflow==1 || misaligned==1){
-        if( memory_overflow==1 || misaligned==1) halt=1;
+    if(error_write$0==1 || error_memoryOverflow==1 || error_misaligned==1){
+        if( error_memoryOverflow==1 || error_misaligned==1) halt=1;
         return;
     }
     MEM_read=1;
@@ -1221,15 +1225,15 @@ void lbu(int rs, int rt, int c){
 void sw(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+(REG[rs][30]-'0')*2+c;
     if(check%4!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(memory_overflow==1 || misaligned==1){
+    if(error_memoryOverflow==1 || error_misaligned==1){
         halt=1;
         return;
     }
@@ -1241,15 +1245,15 @@ void sw(int rs, int rt, int c){
 void sh(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+(REG[rs][30]-'0')*2+c;
     if(check%4!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(memory_overflow==1 || misaligned==1){
+    if(error_memoryOverflow==1 || error_misaligned==1){
         halt=1;
         return;
     }
@@ -1261,15 +1265,15 @@ void sh(int rs, int rt, int c){
 void sb(int rs, int rt, int c){
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
-        number_overflow=1;
+        error_numberOverflow=1;
     if(result>255 || result<0)
-        memory_overflow=1;
+        error_memoryOverflow=1;
 
     int check = (REG[rs][31]-'0')+(REG[rs][30]-'0')*2+c;
     if(check%4!=0)
-        misaligned=1;
+        error_misaligned=1;
 
-    if(memory_overflow==1 || misaligned==1){
+    if(error_memoryOverflow==1 || error_misaligned==1){
         halt=1;
         return;
     }
@@ -1280,7 +1284,7 @@ void sb(int rs, int rt, int c){
 }
 void lui(int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1296,7 +1300,7 @@ void lui(int rt, int c){
 }
 void andi(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1321,7 +1325,7 @@ void andi(int rs, int rt, int c){
 }
 void ori(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1340,7 +1344,7 @@ void ori(int rs, int rt, int c){
 }
 void nori(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1359,7 +1363,7 @@ void nori(int rs, int rt, int c){
 }
 void slti(int rs, int rt, int c){
     if(rt==0){
-        write$0_error=1;
+        error_write$0=1;
         return;
     }
 
@@ -1399,7 +1403,7 @@ void slti(int rs, int rt, int c){
     }
 }
 void beq(int rs, int rt, int c){
-    if(c>0 && (PC_nowptr + c)<0) number_overflow=1;
+    if(c>0 && (PC_nowptr + c)<0) error_numberOverflow=1;
 
     int j, result=1;
     for(j=31; j>=0; j--){
@@ -1420,7 +1424,7 @@ void beq(int rs, int rt, int c){
     }
 }
 void bne(int rs, int rt, int c){
-    if(c>0 && (PC_nowptr + c)<0) number_overflow=1;
+    if(c>0 && (PC_nowptr + c)<0) error_numberOverflow=1;
 
     int j, result=0;
     for(j=31; j>=0; j--){
@@ -1477,15 +1481,15 @@ void memory(int index){
         if(MEM_read==1) DM_dest_reg=dest_reg;
         if(index==18){
             for(i=0; i<32; i++){
-                REG_tmp[dest_reg][i]=dmemory[dest_mem][i];
+                REG_tmp[dest_reg][i]=dmemory[dest_mem/4][i];
             } MEM_read=0;
         }
         else if(index==19){
             for(i=0; i<16; i++){
-                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem/4][i+16];
             }
 
-            if(dmemory[dest_mem][0]=='0'){
+            if(dmemory[dest_mem/4][0]=='0'){
                 for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
@@ -1495,7 +1499,7 @@ void memory(int index){
         }
         else if(index==20){
             for(i=0; i<16; i++){
-                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem/4][i+16];
             }
 
             for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
@@ -1503,10 +1507,10 @@ void memory(int index){
         }
         else if(index==21){
             for(i=0; i<8; i++){
-                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem/4][i+24];
             }
 
-            if(dmemory[dest_mem][0]=='0'){
+            if(dmemory[dest_mem/4][0]=='0'){
                 for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
@@ -1516,7 +1520,7 @@ void memory(int index){
         }
         else if(index==22){
             for(i=0; i<8; i++){
-                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem/4][i+24];
             }
 
             for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
@@ -1524,20 +1528,21 @@ void memory(int index){
         }
         else if(index==23){
             for(i=0; i<32; i++){
-                dmemory[dest_mem][i]=REG_tmp[dest_reg][i];
+                dmemory[dest_mem/4][i]=REG_tmp[dest_reg][i];
             } MEM_write=0;
         }
         else if(index==24){
             for(i=0; i<16; i++){
-                dmemory[dest_mem][i+16]=REG_tmp[dest_reg][i+16];
+                dmemory[dest_mem/4][i+16]=REG_tmp[dest_reg][i+16];
             } MEM_write=0;
         }
         else if(index==25){
             for(i=0; i<8; i++){
-                dmemory[dest_mem][i+24]=REG_tmp[dest_reg][i+24];
+                dmemory[dest_mem/4][i+24]=REG_tmp[dest_reg][i+24];
             } MEM_write=0;
         }
     }
+    WB_index=index;
 }
 
 void write_back(int index){
@@ -1571,21 +1576,21 @@ void write_back(int index){
 void append_ERROR(){
     error=fopen("error_dump.rpt","a");
     /**do error detection**/
-        if(write$0_error){
+        if(error_write$0){
             fprintf(error, "In cycle %d: Write $0 Error\n", cycle);
-            write$0_error=0;
+            error_write$0=0;
         }
-        if(memory_overflow){
+        if(error_memoryOverflow){
             fprintf(error, "In cycle %d: Address Overflow\n", cycle);
-            //break;
+            //halt=1;
         }
-        if(misaligned){
+        if(error_misaligned){
             fprintf(error, "In cycle %d: Misalignment Error\n", cycle);
-            //break;
+            //halt=1;
         }
-        if(number_overflow){
+        if(error_numberOverflow){
             fprintf(error, "In cycle %d: Number Overflow\n", cycle);
-            number_overflow=0;
+            error_numberOverflow=0;
         }
 }
 
@@ -1605,16 +1610,14 @@ int main(){
     instruction_decode(ID_index);
     instruction_fetch();
     append_SNAP();
-    EX_index=ID_index;
-    printf("In cycle1, EX=%d and ID=%d\n",EX_index,ID_index);
+    //printf("In cycle1, EX=%d and ID=%d\n",EX_index,ID_index);
 
     //cycle2
     execution(EX_index);
     instruction_decode(ID_index);
     instruction_fetch();
     append_ERROR();
-    if(halt){
-        //exit(0);
+    if(halt==1 || halt_count==5){
         fclose(snap);
         fclose(error);
         return 0;
@@ -1629,19 +1632,19 @@ int main(){
         EX_index=ID_index;
     }
 
-    /*while(1){
+    while(i<10){
+        i++;
         write_back(WB_index);
         memory(DM_index);
         execution(EX_index);
-        instruction_decode();
+        instruction_decode(ID_index);
         instruction_fetch();
 
-        append_SNAP();
         append_ERROR();
-
-        if(halt){
+        if(halt==1 || halt_count==5){
             break;
         }
+        append_SNAP();
         if(stall){
             WB_index=DM_index;
             DM_index=EX_index;
@@ -1652,7 +1655,7 @@ int main(){
             DM_index=EX_index;
             EX_index=ID_index;
         }
-    }*/
+    }
 
     fclose(snap);
     fclose(error);

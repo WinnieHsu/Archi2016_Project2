@@ -11,6 +11,7 @@ int PC_initptr=0, PC_nowptr=0, PC_prevptr=0;
 
 int OP=0, RS=0, RT=0, RD=0, FUNCT=0, SHAMT=0, C=0, signedC=0;
 int ID_index=0, EX_index=0, DM_index=0, WB_index=0;
+int ID_prev=0, EX_prev=0, DM_prev=0, WB_prev=0;
 int REG_write=0, MEM_write=0, MEM_read=0, dest_reg=0, dest_mem=0, DM_dest_reg=0;;
 
 int cycle=0, halt=0, stall=0, flush=0, forward=0;
@@ -127,14 +128,14 @@ void append_SNAP(){
     //if(stall) fprintf(snap," to_be_stalled");
     if(flush) fprintf(snap," to_be_flushed");
     fprintf(snap,"\nID: ");
-    display_instruction(ID_index);
+    display_instruction(ID_prev);
     if(stall) fprintf(snap," to_be_stalled");
     fprintf(snap,"\nEX: ");
-    display_instruction(EX_index);
+    display_instruction(EX_prev);
     fprintf(snap,"\nDM: ");
-    display_instruction(DM_index);
+    display_instruction(DM_prev);
     fprintf(snap,"\nWB: ");
-    display_instruction(WB_index);
+    display_instruction(WB_prev);
 
     fprintf(snap,"\n\n\n");
     cycle++;
@@ -179,7 +180,7 @@ void display_instruction(int index){
     else if(index==11){
         fprintf(snap,"SRL");
     }
-    else if(index=12){
+    else if(index==12){
         fprintf(snap,"SRA");
     }
     /**J-type instructions**/
@@ -392,7 +393,6 @@ void instruction_fetch(){
     PC_prevptr=PC_nowptr;
     PC_adder(); //PC_now+4
     if(test==1) printf("enter IF, after PC_adder() PC_prev=%d and PC_now=%d\n",PC_prevptr,PC_nowptr);
-    //fetch the instruction of imemory[PC_nowptr/4-1]
 
     OP = char_BINtoDEC(imemory[PC_prevptr/4],6,5);
     RS = char_BINtoDEC(imemory[PC_prevptr/4],5,10);
@@ -487,7 +487,7 @@ void instruction_fetch(){
                 if(test==1) printf("this J-type jal(%d)\n",C);
             }
             else if(OP==63){
-                INSTR_index=0;
+                INSTR_index=34;
                 halt_count++;
             }
             else{
@@ -598,6 +598,10 @@ void instruction_fetch(){
 void instruction_decode(int index){
     if(test==1) printf("enter ID, with index=%d\n",index);
 
+    if(index==0 || index==34){ //NOP or HALT
+        return;
+    }
+
     /**stall detect**/
     if(index>=1&&index<=9){
         if(DM_dest_reg==RS || DM_dest_reg==RT){
@@ -668,6 +672,7 @@ void instruction_decode(int index){
         bgtz(RS,signedC);
         flush=1;
     }
+    ID_prev=index;
     EX_index=index;
 
 }
@@ -675,7 +680,7 @@ void instruction_decode(int index){
 void execution(int index){
     if(test==1) printf("enter EX, with index=%d\n",index);
 
-    if(index==0){ //NOP
+    if(index==0 || index==34){ //NOP or HALT
         return;
     }
     /**R-type instructions**/
@@ -712,7 +717,7 @@ void execution(int index){
     else if(index==11){
         srl(RT,RD,SHAMT);
     }
-    else if(index=12){
+    else if(index==12){
         sra(RT,RD,SHAMT);
     }
     /**J-type instructions**/
@@ -783,7 +788,8 @@ void execution(int index){
     else{
         if(test==1) printf("this is error instruction or is done in ID\n");
     }
-    DM_index=EX_index;
+    EX_prev=index;
+    DM_index=index;
 }
 
 /**R-type instructions**/
@@ -1113,7 +1119,10 @@ void addiu(int rs, int rt, int c){
     }
 }
 void lw(int rs, int rt, int c){
-    if(rt==0) error_write$0=1;
+    if(rt==0){
+        error_write$0=1;
+        //return;
+    }
 
     int result = char_BINtoDEC(REG[rs],32,31) + c;
     if(char_BINtoDEC(REG[rs],32,31)>0 && c>0 && result<0)
@@ -1403,7 +1412,7 @@ void slti(int rs, int rt, int c){
     }
 }
 void beq(int rs, int rt, int c){
-    if(c>0 && (PC_nowptr + c)<0) error_numberOverflow=1;
+    if(c>0 && (PC_nowptr + 4*c)<0) error_numberOverflow=1;
 
     int j, result=1;
     for(j=31; j>=0; j--){
@@ -1413,7 +1422,7 @@ void beq(int rs, int rt, int c){
         }
     }
     if(result){
-        PC_nowptr=PC_nowptr+c;
+        PC_nowptr=PC_nowptr+4*c;
         j=31;
         int digit=PC_nowptr;
         while(digit>0){
@@ -1424,7 +1433,7 @@ void beq(int rs, int rt, int c){
     }
 }
 void bne(int rs, int rt, int c){
-    if(c>0 && (PC_nowptr + c)<0) error_numberOverflow=1;
+    if(c>0 && (PC_nowptr + 4*c)<0) error_numberOverflow=1;
 
     int j, result=0;
     for(j=31; j>=0; j--){
@@ -1434,7 +1443,7 @@ void bne(int rs, int rt, int c){
         }
     }
     if(result){
-        PC_nowptr=PC_nowptr+c;
+        PC_nowptr=PC_nowptr+4*c;
         j=31;
         int digit=PC_nowptr;
         while(digit>0){
@@ -1472,7 +1481,7 @@ void bgtz(int rs, int c){
 void memory(int index){
     if(test==1) printf("enter DM, with index=%d\n",index);
 
-    if(index==0 || (MEM_read==0&&MEM_write==0) ){
+    if(index==0 || index==34 || (MEM_read==0&&MEM_write==0) ){
         return;
     }
 
@@ -1481,15 +1490,15 @@ void memory(int index){
         if(MEM_read==1) DM_dest_reg=dest_reg;
         if(index==18){
             for(i=0; i<32; i++){
-                REG_tmp[dest_reg][i]=dmemory[dest_mem/4][i];
+                REG_tmp[dest_reg][i]=dmemory[dest_mem][i];
             } MEM_read=0;
         }
         else if(index==19){
             for(i=0; i<16; i++){
-                REG_tmp[dest_reg][i+16]=dmemory[dest_mem/4][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
             }
 
-            if(dmemory[dest_mem/4][0]=='0'){
+            if(dmemory[dest_mem][0]=='0'){
                 for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
@@ -1499,7 +1508,7 @@ void memory(int index){
         }
         else if(index==20){
             for(i=0; i<16; i++){
-                REG_tmp[dest_reg][i+16]=dmemory[dest_mem/4][i+16];
+                REG_tmp[dest_reg][i+16]=dmemory[dest_mem][i+16];
             }
 
             for(i=0; i<16; i++) REG_tmp[dest_reg][i]='0';
@@ -1507,10 +1516,10 @@ void memory(int index){
         }
         else if(index==21){
             for(i=0; i<8; i++){
-                REG_tmp[dest_reg][i+24]=dmemory[dest_mem/4][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
             }
 
-            if(dmemory[dest_mem/4][0]=='0'){
+            if(dmemory[dest_mem][0]=='0'){
                 for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
             }
             else{
@@ -1520,7 +1529,7 @@ void memory(int index){
         }
         else if(index==22){
             for(i=0; i<8; i++){
-                REG_tmp[dest_reg][i+24]=dmemory[dest_mem/4][i+24];
+                REG_tmp[dest_reg][i+24]=dmemory[dest_mem][i+24];
             }
 
             for(i=0; i<24; i++) REG_tmp[dest_reg][i]='0';
@@ -1528,27 +1537,28 @@ void memory(int index){
         }
         else if(index==23){
             for(i=0; i<32; i++){
-                dmemory[dest_mem/4][i]=REG_tmp[dest_reg][i];
+                dmemory[dest_mem][i]=REG_tmp[dest_reg][i];
             } MEM_write=0;
         }
         else if(index==24){
             for(i=0; i<16; i++){
-                dmemory[dest_mem/4][i+16]=REG_tmp[dest_reg][i+16];
+                dmemory[dest_mem][i+16]=REG_tmp[dest_reg][i+16];
             } MEM_write=0;
         }
         else if(index==25){
             for(i=0; i<8; i++){
-                dmemory[dest_mem/4][i+24]=REG_tmp[dest_reg][i+24];
+                dmemory[dest_mem][i+24]=REG_tmp[dest_reg][i+24];
             } MEM_write=0;
         }
     }
+    DM_prev=index;
     WB_index=index;
 }
 
 void write_back(int index){
     if(test==1) printf("enter WB, with index=%d\n",index);
 
-    if(index==0 || REG_write==0){ //NOP
+    if(index==0 || index==34 || REG_write==0){ //NOP
         return;
     }
 
@@ -1571,6 +1581,7 @@ void write_back(int index){
         }
         REG_write=0;
     }
+    WB_prev=index;
 }
 
 void append_ERROR(){
@@ -1594,6 +1605,7 @@ void append_ERROR(){
         }
 }
 
+
 /////////////////////////////////////////////
 
 int main(){
@@ -1603,16 +1615,18 @@ int main(){
     error=fopen("error_dump.rpt","w");
 
     //cycle0
+    if(test==1) printf(">>cycle %d<<\n",cycle);
     instruction_fetch();
     initial_SNAP();
 
     //cycle1
+    if(test==1) printf(">>cycle %d<<\n",cycle);
     instruction_decode(ID_index);
     instruction_fetch();
     append_SNAP();
-    //printf("In cycle1, EX=%d and ID=%d\n",EX_index,ID_index);
 
     //cycle2
+    if(test==1) printf(">>cycle %d<<\n",cycle);
     execution(EX_index);
     instruction_decode(ID_index);
     instruction_fetch();
@@ -1634,6 +1648,7 @@ int main(){
 
     while(i<10){
         i++;
+        if(test==1) printf(">>cycle %d<<\n",cycle);
         write_back(WB_index);
         memory(DM_index);
         execution(EX_index);
